@@ -21,11 +21,23 @@ Ensure the following tools are installed on your system:
 sudo apt update  
 sudo apt install ffmpeg filetype coreutils
 
-### **Download**
+### **Basic Setup**
 
 Simply download the script and make it executable:
 
 chmod \+x video-tools.sh
+
+### **System-wide Installation (Recommended)**
+
+To run the script from anywhere in your terminal as video-tools, move it to your local bin directory:
+
+\# Move and rename to 'video-tools'  
+sudo mv video-tools.sh /usr/local/bin/video-tools
+
+\# Ensure it has execution permissions  
+sudo chmod \+x /usr/local/bin/video-tools
+
+Now you can simply type video-tools instead of ./video-tools.sh.
 
 ## **📖 Usage & Examples**
 
@@ -33,31 +45,31 @@ chmod \+x video-tools.sh
 
 Creates an M3U file from all videos in a folder:
 
-./video-tools.sh make-m3u /path/to/videos my\_list.m3u
+video-tools make-m3u /path/to/videos my\_list.m3u
 
 ### **2\. Clean Up Downloads**
 
 Searches for all videos in Downloads and moves them (with preview and confirmation):
 
-./video-tools.sh move-videos \~/Downloads /path/to/series
+video-tools move-videos \~/Downloads /path/to/series
 
 ### **3\. Intelligent Sorting**
 
 Groups videos in a playlist by name similarity:
 
-./video-tools.sh sort-by-words my\_list.m3u sorted.m3u
+video-tools sort-by-words my\_list.m3u sorted.m3u
 
 ### **4\. Sort Playlist by Quality**
 
 Sorts a playlist by resolution (descending) and adds metadata info:
 
-./video-tools.sh sort-m3u list.m3u \--by=res \--desc \--annotate
+video-tools sort-m3u list.m3u \--by=res \--desc \--annotate
 
 ### **5\. Find Duplicates**
 
 Searches for identical files via MD5 hash and compares their quality:
 
-./video-tools.sh find-dupes /path/to/videos
+video-tools find-dupes /path/to/videos
 
 ## **📋 Command Overview**
 
