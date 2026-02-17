@@ -1,7 +1,7 @@
 #!/bin/bash
 # ==============================================================
-# 🎬 VIDEO TOOLS – Playlist Maker, Cleaner, Sorter & Word-Grouper
-# Version: 3.5 (Added sort-by-words grouping)
+# 🎬 VIDEO TOOLS – Playlist Maker, Cleaner, Sorter & Organizer
+# Version: 3.8 (Improved move-videos with file listing)
 # Author: Gemini & You 😎
 # ==============================================================
 set -uo pipefail
@@ -12,7 +12,7 @@ VERBOSE=0
 CORES=$(nproc 2>/dev/null || echo 4)
 
 # Abhängigkeiten prüfen
-for cmd in ffprobe ffmpeg md5sum filetype awk; do
+for cmd in ffprobe ffmpeg md5sum filetype; do
     if ! command -v "$cmd" &> /dev/null; then
         echo "⚠️  Warnung: $cmd ist nicht installiert. Einige Funktionen werden fehlschlagen."
     fi
@@ -85,9 +85,12 @@ BEFEHLE:
   make-m3u <verzeichnis> [out.m3u]
       Erstellt eine M3U-Playlist mittels filetype Speed-Pipeline.
 
+  move-videos <quelle> <ziel>
+      Sucht Videos in <quelle> und verschiebt sie nach <ziel>.
+      Listet gefundene Dateien vor dem Verschieben auf.
+
   sort-by-words <in.m3u> [out.m3u]
-      Analysiert Dateinamen und gruppiert Dateien mit ähnlichen Wörtern 
-      zusammen (gut für Serien oder thematisch verwandte Clips).
+      Gruppiert Dateien mit ähnlichen Wörtern in der Playlist zusammen.
 
   clean-m3u <in.m3u> [out.m3u] [--annotate]
       Bereinigt eine M3U-Playlist (ungültige Pfade, MD5-Duplikate).
@@ -126,6 +129,45 @@ make_m3u() {
 }
 
 # ==============================================================
+# 🚚 Video Organizer (Move Function)
+# ==============================================================
+move_videos() {
+    local src="${1:-}"
+    local dest="${2:-}"
+
+    [[ -z "$src" || ! -d "$src" ]] && { log_err "Quellverzeichnis ungültig."; return 1; }
+    [[ -z "$dest" ]] && { log_err "Zielverzeichnis fehlt."; return 1; }
+    
+    mkdir -p "$dest"
+
+    log_info "Suche Videos in $src (filetype Speed-Check)..."
+    
+    # Files in Variable speichern (verwende Array-Simulation via Newlines)
+    local files_to_move=$(find "$src" -maxdepth 2 -type f -print0 | xargs -0 -P "$CORES" filetype -f | grep -i "(video/" | cut -d: -f1 |grep -vi "dezemberfa" |grep -vi "harehare")
+    local count=$(echo "$files_to_move" | grep -c . || echo 0)
+
+    if [ "$count" -eq 0 ]; then
+        log_info "Keine Videos zum Verschieben gefunden."
+        return 0
+    fi
+
+    # Dateien auflisten
+    echo -e "\n📂 Folgende Videos wurden gefunden:"
+    echo "------------------------------------------------------------"
+    echo "$files_to_move" | sed 's/^/  - /'
+    echo "------------------------------------------------------------"
+    
+    log_warn "$count Videos gefunden. Verschieben nach '$dest' starten? (y/n)"
+    read -p "> " confirm
+    [[ "$confirm" != "y" ]] && { log_info "Abgebrochen."; return 0; }
+
+    # Die Move-Pipeline
+    echo "$files_to_move" | tr '\n' '\0' | xargs -0 -P "$CORES" -I {} mv -v "{}" "$dest/"
+    
+    log_success "Verschieben von $count Dateien abgeschlossen."
+}
+
+# ==============================================================
 # 📝 Sort by Words (Grouping Logic)
 # ==============================================================
 sort_by_words() {
@@ -135,28 +177,17 @@ sort_by_words() {
     [[ ! -f "$input" ]] && { log_err "Eingabedatei '$input' fehlt."; return 1; }
     
     log_info "Analysiere Wort-Häufigkeiten für Gruppierung..."
-    
     local tmp_data=$(mktemp)
     
-    # 1. Extrahiere Pfade und generiere "Sortier-Schlüssel" basierend auf den häufigsten Wörtern
     while IFS= read -r line || [[ -n "$line" ]]; do
         [[ "$line" =~ ^# || -z "$line" ]] && continue
-        
-        # Dateiname ohne Pfad und Endung, Kleingeschrieben, Sonderzeichen entfernt
         local filename=$(basename "$line")
         local clean_name=$(echo "${filename%.*}" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9 ]/ /g')
-        
         echo -e "$clean_name\t$line" >> "$tmp_data"
     done < "$input"
 
-    # 2. Nutze AWK für ein Scoring: Dateien mit identischen Wort-Kombinationen rücken zusammen
-    log_info "Gruppiere ähnliche Dateien..."
     echo "#EXTM3U" > "$output"
-    
-    # Der AWK-Teil sortiert primär nach dem ersten Wort, dann nach dem zweiten, 
-    # was effektiv Serien und ähnliche Titel gruppiert.
     sort -k1,1 "$tmp_data" | cut -f2 >> "$output"
-    
     rm "$tmp_data"
     log_success "Wort-Sortierung abgeschlossen: $output"
 }
@@ -182,41 +213,32 @@ clean_m3u() {
     log_info "Phase 1: Validierung & De-Duplizierung (MD5)..."
     local tmp_list=$(mktemp)
     declare -A seen_md5
-    local total=0
 
     while IFS= read -r raw_line || [[ -n "$raw_line" ]]; do
         local line=$(echo "$raw_line" | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
         [[ "$line" =~ ^# || -z "$line" ]] && continue
         
-        ((total++))
         local current_path="$line"
         if [[ ! -f "$current_path" ]]; then
             local bname=$(basename "$current_path")
             local found=$(find "$search_root" -type f -name "$bname" 2>/dev/null | head -n 1 || true)
             if [[ -n "$found" ]]; then 
                 current_path="$found"
-                log_verbose "Pfad korrigiert: $bname"
             else 
-                log_verbose "Nicht gefunden: $bname"
                 continue 
             fi
         fi
 
-        log_verbose "Prüfe ($total): $(basename "$current_path")"
         local hash=$(md5sum "$current_path" 2>/dev/null | cut -d' ' -f1 || echo "$current_path")
         if [[ -z "${seen_md5["$hash"]+x}" ]]; then
             echo "$current_path" >> "$tmp_list"
             seen_md5["$hash"]=1
-        else
-            log_verbose "Duplikat ignoriert: $(basename "$current_path")"
         fi
     done < "$input"
 
-    log_info "Phase 2: Finalisierung (Parallel-Modus aktiv: -P $CORES)..."
     echo "#EXTM3U" > "$output"
     if [[ $annotate_flag -eq 1 ]]; then
         cat "$tmp_list" | tr '\n' '\0' | xargs -0 -P "$CORES" -I {} bash -c '
-            log_verbose "Verarbeite: $(basename "{}")"
             get_video_metadata_string "{}"
             echo "{}"
         ' >> "$output"
@@ -224,7 +246,7 @@ clean_m3u() {
         cat "$tmp_list" >> "$output"
     fi
     rm "$tmp_list"
-    log_success "Playlist erfolgreich erstellt: $output"
+    log_success "Playlist erstellt: $output"
 }
 
 # ==============================================================
@@ -232,10 +254,9 @@ clean_m3u() {
 # ==============================================================
 scan_tags() {
     local dir="${1:-.}"
-    [[ ! -d "$dir" ]] && { log_err "Verzeichnis fehlt oder ungültig."; return 1; }
+    [[ ! -d "$dir" ]] && { log_err "Verzeichnis ungültig."; return 1; }
     log_info "Scanne Video-Titel parallel (-P $CORES) in: $dir"
-    find "$dir" -type f -print0 | xargs -0 filetype -f | grep -i "video" | cut -d: -f1 | tr '\n' '\0' | xargs -0 -P "$CORES" -I {} bash -c '
-        log_verbose "Analysiere: $(basename "{}")"
+    find "$dir" -type f -print0 | xargs -0 filetype -f | grep -i "(video/" | cut -d: -f1 | tr '\n' '\0' | xargs -0 -P "$CORES" -I {} bash -c '
         title=$(ffprobe -v error -show_entries format_tags=title -of default=noprint_wrappers=1:nokey=1 "{}" 2>/dev/null)
         [ -n "$title" ] && printf "✅ \033[1m%s\033[0m -> Title: \033[32m%s\033[0m\n" "$(basename "{}")" "$title"
     '
@@ -262,12 +283,9 @@ sort_m3u() {
     local criteria=$(echo "$mode" | sed 's/^--by=//')
     local tmp=$(mktemp)
 
-    log_info "Analysiere Metadaten für Sortierung nach $criteria..."
     while IFS= read -r line || [[ -n "$line" ]]; do
         line=$(echo "$line" | tr -d '\r' | xargs)
         [[ "$line" =~ ^# || -z "$line" || ! -f "$line" ]] && continue
-        
-        log_verbose "Stats für: $(basename "$line")"
         local s=$(get_video_stats "$line")
         local w h c d sz b t
         IFS=',' read -r w h c d sz b t <<< "$s"
@@ -281,7 +299,6 @@ sort_m3u() {
     echo "#EXTM3U" > "$out"
     if [[ $annotate -eq 1 ]]; then
         sort -t$'\t' $sort_flag "$tmp" | cut -f5 | tr '\n' '\0' | xargs -0 -P "$CORES" -I {} bash -c '
-            log_verbose "Annotiere: $(basename "{}")"
             get_video_metadata_string "{}"
             echo "{}"
         ' >> "$out"
@@ -293,20 +310,63 @@ sort_m3u() {
 }
 
 # ==============================================================
+# 🏆 Qualitäts-Vergleich & Duplikate
+# ==============================================================
+compare_quality() {
+    local f1="${1:-}" f2="${2:-}"
+    [[ ! -f "$f1" || ! -f "$f2" ]] && { log_err "Zwei gültige Dateien benötigt."; return 1; }
+    local s1=$(get_video_stats "$f1") s2=$(get_video_stats "$f2")
+    local w1 h1 c1 d1 sz1 b1 t1 w2 h2 c2 d2 sz2 b2 t2
+    IFS=',' read -r w1 h1 c1 d1 sz1 b1 t1 <<< "$s1"
+    IFS=',' read -r w2 h2 c2 d2 sz2 b2 t2 <<< "$s2"
+
+    echo -e "\n📊 VERGLEICH:\n1. $f1\n2. $f2\n"
+    printf "%-15s | %-25s | %-25s\n" "Attribut" "Datei 1" "Datei 2"
+    printf "%-15s | %-25s | %-25s\n" "---------------" "-------------------------" "-------------------------"
+    printf "%-15s | %-25s | %-25s\n" "Auflösung" "${w1}x${h1}" "${w2}x${h2}"
+    printf "%-15s | %-25s | %-25s\n" "Bitrate" "$((b1/1000)) kbps" "$((b2/1000)) kbps"
+    printf "%-15s | %-25s | %-25s\n" "Größe" "$(du -h "$f1" | cut -f1)" "$(du -h "$f2" | cut -f1)"
+    printf "%-15s | %-25s | %-25s\n" "Codec" "$c1" "$c2"
+}
+
+find_dupes() {
+    local dir="${1:-.}"
+    declare -A hashes
+    log_info "Suche MD5-Duplikate in $dir (filetype Speed-Check)..."
+    
+    local video_files=$(find "$dir" -type f -print0 | xargs -0 -P "$CORES" filetype -f | grep -i "(video/" | cut -d: -f1)
+    
+    while IFS= read -r file; do
+        [[ -z "$file" ]] && continue
+        local h=$(md5sum "$file" | cut -d' ' -f1)
+        if [[ -n "${hashes["$h"]+x}" ]]; then
+            log_warn "Duplikat entdeckt: $(basename "$file")"
+            compare_quality "${hashes["$h"]}" "$file"
+            echo -e "\nWelche Datei soll BEHALTEN werden? (1) Datei 1, (2) Datei 2, (s) Überspringen:"
+            read -p "> " choice
+            [[ "$choice" == "1" ]] && rm -v "$file"
+            [[ "$choice" == "2" ]] && rm -v "${hashes["$h"]}" && hashes["$h"]="$file"
+        else
+            hashes["$h"]="$file"
+        fi
+    done <<< "$video_files"
+}
+
+# ==============================================================
 # 🚀 Dispatcher
 # ==============================================================
 cmd="${1:-help}"
 shift || true
 case "$cmd" in
     make-m3u)        make_m3u "$@" ;;
+    move-videos)     move_videos "$@" ;;
     sort-by-words)   sort_by_words "$@" ;;
     clean-m3u)       clean_m3u "$@" ;;
     annotate-m3u)    clean_m3u "$@" --annotate ;;
     sort-m3u)        sort_m3u "$@" ;;
     scan-tags)       scan_tags "$@" ;;
-    find-dupes)      log_err "find-dupes erfordert manuellen MIME-Check (siehe Code)." ;;
+    find-dupes)      find_dupes "$@" ;;
     compare-quality) compare_quality "$@" ;;
-    export-json)     export_json "$@" ;;
     help|--help|-h)  show_help ;;
     *) log_err "Unbekannter Befehl: $cmd"; show_help; exit 1 ;;
 esac
