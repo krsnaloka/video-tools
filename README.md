@@ -1,70 +1,82 @@
-# **🎬 Video-Tools v3.2**
+# **🎬 Video Tools**
 
-A reliable and efficient Bash utility suite for managing video playlists (M3U) and analyzing video directories. Version 3.2 focuses on stability and robust metadata annotation.
+**A highly optimized Bash toolkit for managing, sorting, and organizing video collections.**
 
-## **✨ Key Features**
+This script is a "Swiss Army Knife" for video power users. It leverages modern Unix pipelines and parallel processing to handle even massive media libraries at lightning speed. Whether you want to create playlists, clean up downloads, or find duplicates – Video Tools gets it done with maximum performance.
 
-* **⚡ Parallel Annotation:** Uses multi-threading (xargs) to fetch metadata for playlists, significantly speeding up the annotation process.  
-* **🧹 Robust M3U Cleaning:** \* Removes duplicate entries based on MD5 checksums.  
-  * Deep-scan path recovery: Automatically finds moved or renamed files within the project root.  
-* **📊 Advanced Playlist Sorting:** Organize your media by resolution, file size, duration, or date.  
-* **🔍 Metadata Insights:** Extract technical specifications like codecs, bitrates, and internal title tags.  
-* **🏆 Side-by-Side Comparison:** Compare two video files to identify the best quality version.  
-* **📦 JSON Export:** Convert M3U playlists into structured JSON for external use.
+## **🚀 Key Features**
 
-## **🚀 Installation**
+* **Parallel Processing:** Automatically utilizes all available CPU cores (xargs \-P) to accelerate metadata scans and validations.  
+* **Speed Pipeline:** Uses filetype \-f instead of slower standard methods to identify video files in fractions of a second.  
+* **Intelligent Grouping (sort-by-words):** Sorts videos based on word similarities in the filename – ideal for TV shows or related clips.  
+* **Download Organizer (move-videos):** Scans directories (e.g., your Downloads folder), lists found videos, and moves them collectively to a destination directory.  
+* **Playlist Tuning:** Creates M3U files, cleans up dead paths, and can add technical comments (resolution, codec, bitrate) upon request.  
+* **Quality Check:** Finds MD5 duplicates and provides a direct comparison of technical data to help you delete the lower-quality version.
 
-### **1\. Prerequisites**
+## **🛠 Installation & Requirements**
 
-Ensure you have the necessary dependencies installed:
+Ensure the following tools are installed on your system:
 
-sudo apt update && sudo apt install ffmpeg coreutils file
+\# Required dependencies  
+sudo apt update  
+sudo apt install ffmpeg filetype coreutils
 
-### **2\. Setup**
+### **Download**
 
-Download the script and make it executable:
+Simply download the script and make it executable:
 
 chmod \+x video-tools.sh
 
-## **🛠 Usage Guide**
+## **📖 Usage & Examples**
 
-### **Clean & Annotate Playlists**
+### **1\. Create a Playlist**
 
-The core feature of v3.2. Removes duplicates and adds technical info:
+Creates an M3U file from all videos in a folder:
 
-./video-tools.sh clean-m3u input.m3u output.m3u \--annotate \-v
+./video-tools.sh make-m3u /path/to/videos my\_list.m3u
 
-### **Sort Playlists**
+### **2\. Clean Up Downloads**
 
-Sort your M3U by resolution in descending order:
+Searches for all videos in Downloads and moves them (with preview and confirmation):
 
-./video-tools.sh sort-m3u playlist.m3u \--by=res \--desc
+./video-tools.sh move-videos \~/Downloads /path/to/series
 
-### **Find Duplicates**
+### **3\. Intelligent Sorting**
 
-Scan a directory for identical video files:
+Groups videos in a playlist by name similarity:
+
+./video-tools.sh sort-by-words my\_list.m3u sorted.m3u
+
+### **4\. Sort Playlist by Quality**
+
+Sorts a playlist by resolution (descending) and adds metadata info:
+
+./video-tools.sh sort-m3u list.m3u \--by=res \--desc \--annotate
+
+### **5\. Find Duplicates**
+
+Searches for identical files via MD5 hash and compares their quality:
 
 ./video-tools.sh find-dupes /path/to/videos
 
-## **📋 Commands Overview**
+## **📋 Command Overview**
 
 | Command | Description |
 | :---- | :---- |
-| clean-m3u | Removes dead links and MD5 duplicates. |
-| annotate-m3u | Adds resolution, duration, and codec info to lines. |
-| sort-m3u | Sorts by size, res, duration, or date. |
-| scan-tags | Scans folders for internal metadata titles. |
-| compare-quality | Technical comparison of two files. |
-| find-dupes | Interactive duplicate finder. |
+| make-m3u | Blazing fast M3U playlist creation. |
+| move-videos | Moves videos from A to B (with preview). |
+| sort-by-words | Groups thematically related videos together. |
+| clean-m3u | Removes dead links and duplicates from playlists. |
+| sort-m3u | Sorts by resolution, size, date, or duration. |
+| scan-tags | Reads internal title metadata. |
+| find-dupes | Interactive duplicate search with quality comparison. |
 
-## **⚙️ Requirements**
+## **💡 Technical Details**
 
-* **Bash:** 4.0+  
-* **FFmpeg:** ffprobe required for metadata.  
-* **Coreutils:** md5sum, stat.
+The script is built for efficiency:
 
-## **📄 License**
+* **Language:** Bash (Shell Script)  
+* **Parallelization:** xargs with dynamic core detection.  
+* **Engine:** ffprobe for metadata, filetype for MIME checks, md5sum for integrity.
 
-This project is licensed under the **MIT License**.
-
-*Stability first. Optimized for reliability.*
+*Built for efficiency and order in large video libraries.* 😎
